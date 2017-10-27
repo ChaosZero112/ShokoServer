@@ -17,7 +17,7 @@ RUN xbuild /property:Configuration=CLI /property:OutDir=/usr/src/app/build/
 RUN rm -rf /usr/src/app/source
 RUN rm /usr/src/app/build/System.Net.Http.dll
 WORKDIR /usr/src/app/build
-RUN useradd -u 1000 -ms /bin/bash docker && chown -R 1000:1000 && chmod -R 777 /root
+RUN useradd -u 1000 -ms /bin/bash docker && chown -R 1000:1000 /root && chmod -R 777 /root
 
 VOLUME /root/.shoko/
 VOLUME /usr/src/app/build/webui
