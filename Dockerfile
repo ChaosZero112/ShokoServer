@@ -7,7 +7,7 @@ RUN echo "deb http://dl.bintray.com/cazzar/shoko-deps jesse main" | tee -a /etc/
 
 RUN apt-get update && apt-get install -y --force-yes libmediainfo0 librhash0 sqlite.interop jq unzip
 
-RUN useradd --disabled-password -u 1000 -ms /bin/sh docker && chown -R 1000:1000 /root && chmod -R 777 /root
+RUN useradd -u 1000 -Ms /bin/sh -p password docker && passwd -d docker && chown -R 1000:1000 /root && chmod -R 777 /root
 
 RUN mkdir -p /usr/src/app/source /usr/src/app/build
 COPY . /usr/src/app/source
