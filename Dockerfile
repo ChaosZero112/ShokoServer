@@ -7,7 +7,7 @@ RUN echo "deb http://dl.bintray.com/cazzar/shoko-deps jesse main" | tee -a /etc/
 
 RUN apt-get update && apt-get install -y --force-yes libmediainfo0 librhash0 sqlite.interop jq unzip
 
-RUN useradd -u 1000 -Ms /bin/sh -p password docker && passwd -d docker && chown -R 1000:1000 /root && chmod -R 777 /root
+#RUN useradd -u 1000 -Ms /bin/sh -p password docker && passwd -d docker && chown -R 1000:1000 /root && chmod -R 777 /root
 
 RUN mkdir -p /usr/src/app/source /usr/src/app/build
 COPY . /usr/src/app/source
@@ -33,4 +33,4 @@ VOLUME /usr/src/app/build/webui
 HEALTHCHECK --start-period=5m CMD curl -H "Content-Type: application/json" -H 'Accept: application/json' 'http://localhost:8111/v1/Server' || exit 1
 
 EXPOSE 8111
-ENTRYPOINT mono --debug Shoko.CLI.exe
+ENTRYPOINT useradd -u 1000 -Ms /bin/sh -p password docker && passwd -d docker && chown -R 1000:1000 /root && chmod -R 777 /root && mono --debug Shoko.CLI.exe
