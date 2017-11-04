@@ -36,6 +36,8 @@ namespace Shoko.Server.Models
 
         #endregion
 
+        #region Properties and fields
+
         private CL_AniDB_AnimeDetailed _contract;
 
         public virtual CL_AniDB_AnimeDetailed Contract
@@ -90,6 +92,37 @@ ORDER BY count(DISTINCT AnimeID) DESC, Anime_GroupName ASC";
                 if (string.IsNullOrEmpty(Picname)) return string.Empty;
 
                 return Path.Combine(ImageUtils.GetAniDBImagePath(AnimeID), Picname);
+            }
+        }
+
+        public static void GetRelatedAnimeRecursive(ISessionWrapper session, int animeID,
+            ref List<SVR_AniDB_Anime> relList,
+            ref List<int> relListIDs, ref List<int> searchedIDs)
+        {
+            SVR_AniDB_Anime anime = RepoFactory.AniDB_Anime.GetByAnimeID(animeID);
+            searchedIDs.Add(animeID);
+
+            foreach (AniDB_Anime_Relation rel in anime.GetRelatedAnime(session))
+            {
+                string relationtype = rel.RelationType.ToLower();
+                if (SVR_AnimeGroup.IsRelationTypeInExclusions(relationtype))
+                {
+                    //Filter these relations these will fix messes, like Gundam , Clamp, etc.
+                    continue;
+                }
+                SVR_AniDB_Anime relAnime = RepoFactory.AniDB_Anime.GetByAnimeID(session, rel.RelatedAnimeID);
+                if (relAnime != null && !relListIDs.Contains(relAnime.AnimeID))
+                {
+                    if (SVR_AnimeGroup.IsRelationTypeInExclusions(relAnime.GetAnimeTypeDescription().ToLower()))
+                        continue;
+                    relList.Add(relAnime);
+                    relListIDs.Add(relAnime.AnimeID);
+                    if (!searchedIDs.Contains(rel.RelatedAnimeID))
+                    {
+                        GetRelatedAnimeRecursive(session, rel.RelatedAnimeID, ref relList, ref relListIDs,
+                            ref searchedIDs);
+                    }
+                }
             }
         }
 
@@ -855,10 +888,14 @@ ORDER BY count(DISTINCT AnimeID) DESC, Anime_GroupName ASC";
 
         public List<AniDB_Episode> GetAniDBEpisodes() => RepoFactory.AniDB_Episode.GetByAnimeID(AnimeID);
 
+        #endregion
+
         public SVR_AniDB_Anime()
         {
             DisableExternalLinksFlag = 0;
         }
+
+        #region Init and Populate
 
         private bool Populate(Raw_AniDB_Anime animeInfo)
         {
@@ -904,6 +941,61 @@ ORDER BY count(DISTINCT AnimeID) DESC, Anime_GroupName ASC";
             URL = animeInfo.URL;
             VoteCount = animeInfo.VoteCount;
             return true;
+        }
+
+        public SVR_AnimeSeries CreateAnimeSeriesAndGroup(int? existingGroupID = null)
+        {
+            using (var session = DatabaseFactory.SessionFactory.OpenSession())
+            {
+                return CreateAnimeSeriesAndGroup(session.Wrap(), existingGroupID);
+            }
+        }
+
+        public SVR_AnimeSeries CreateAnimeSeriesAndGroup(ISessionWrapper session, int? existingGroupID = null)
+        {
+            // Create a new AnimeSeries record
+            SVR_AnimeSeries series = new SVR_AnimeSeries();
+
+            series.Populate(this);
+            // Populate before making a group to ensure IDs and stats are set for group filters.
+            RepoFactory.AnimeSeries.Save(series, false, false);
+
+            if (existingGroupID == null)
+            {
+                SVR_AnimeGroup grp = new AnimeGroupCreator().GetOrCreateSingleGroupForSeries(session, series);
+                series.AnimeGroupID = grp.AnimeGroupID;
+            }
+            else
+            {
+                SVR_AnimeGroup grp = RepoFactory.AnimeGroup.GetByID(existingGroupID.Value) ??
+                                     new AnimeGroupCreator().GetOrCreateSingleGroupForSeries(session, series);
+                series.AnimeGroupID = grp.AnimeGroupID;
+            }
+
+            RepoFactory.AnimeSeries.Save(series, false, false);
+
+            // check for TvDB associations
+            if (Restricted == 0)
+            {
+                CommandRequest_TvDBSearchAnime cmd = new CommandRequest_TvDBSearchAnime(AnimeID, forced: false);
+                cmd.Save();
+
+                // check for Trakt associations
+                if (ServerSettings.Trakt_IsEnabled && !string.IsNullOrEmpty(ServerSettings.Trakt_AuthToken))
+                {
+                    CommandRequest_TraktSearchAnime cmd2 = new CommandRequest_TraktSearchAnime(AnimeID, forced: false);
+                    cmd2.Save();
+                }
+
+                if (AnimeType == (int) Shoko.Models.Enums.AnimeType.Movie)
+                {
+                    CommandRequest_MovieDBSearchAnime cmd3 =
+                        new CommandRequest_MovieDBSearchAnime(AnimeID, false);
+                    cmd3.Save();
+                }
+            }
+
+            return series;
         }
 
         public bool PopulateAndSaveFromHTTP(ISession session, Raw_AniDB_Anime animeInfo, List<Raw_AniDB_Episode> eps,
@@ -1148,12 +1240,26 @@ ORDER BY count(DISTINCT AnimeID) DESC, Anime_GroupName ASC";
 
             foreach (Raw_AniDB_Character rawchar in chars)
             {
-                AniDB_Character chr = RepoFactory.AniDB_Character.GetByCharID(sessionWrapper, rawchar.CharID);
-                if (chr == null)
-                    chr = new AniDB_Character();
+                AniDB_Character chr = RepoFactory.AniDB_Character.GetByCharID(sessionWrapper, rawchar.CharID) ??
+                                      new AniDB_Character();
 
                 if (!chr.PopulateFromHTTP(rawchar)) continue;
                 chrsToSave.Add(chr);
+
+                var character = RepoFactory.AnimeCharacter.GetByAniDBID(chr.CharID);
+                if (character == null)
+                {
+                    character = new AnimeCharacter
+                    {
+                        AniDBID = chr.CharID,
+                        Name = chr.CharName,
+                        AlternateName = rawchar.CharKanjiName,
+                        Description = chr.CharDescription,
+                        ImagePath = chr.GetPosterPath()
+                    };
+                    // we need an ID for xref
+                    RepoFactory.AnimeCharacter.Save(character);
+                }
 
                 // create cross ref's between anime and character, but don't actually download anything
                 AniDB_Anime_Character anime_char = new AniDB_Anime_Character();
@@ -1183,6 +1289,36 @@ ORDER BY count(DISTINCT AnimeID) DESC, Anime_GroupName ASC";
                     seiyuu.SeiyuuID = rawSeiyuu.SeiyuuID;
                     seiyuu.SeiyuuName = rawSeiyuu.SeiyuuName;
                     seiyuuToSave[seiyuu.SeiyuuID] = seiyuu;
+
+                    var staff = RepoFactory.AnimeStaff.GetByAniDBID(seiyuu.SeiyuuID);
+                    if (staff == null)
+                    {
+                        staff = new AnimeStaff
+                        {
+                            // Unfortunately, most of the info is not provided
+                            AniDBID = seiyuu.SeiyuuID,
+                            Name = rawSeiyuu.SeiyuuName,
+                            ImagePath = seiyuu.GetPosterPath()
+                        };
+                        // we need an ID for xref
+                        RepoFactory.AnimeStaff.Save(staff);
+                    }
+
+                    var xrefAnimeStaff = RepoFactory.CrossRef_Anime_Staff.GetByParts(AnimeID, character.CharacterID,
+                        staff.StaffID, StaffRoleType.Seiyuu);
+                    if (xrefAnimeStaff == null)
+                    {
+                        xrefAnimeStaff = new CrossRef_Anime_Staff
+                        {
+                            AniDB_AnimeID = AnimeID,
+                            Language = "Japanese",
+                            RoleType = (int) StaffRoleType.Seiyuu,
+                            Role = rawchar.CharType,
+                            RoleID = character.CharacterID,
+                            StaffID = staff.StaffID,
+                        };
+                        RepoFactory.CrossRef_Anime_Staff.Save(xrefAnimeStaff);
+                    }
                 }
             }
             RepoFactory.AniDB_Character.Save(chrsToSave);
@@ -1303,6 +1439,9 @@ ORDER BY count(DISTINCT AnimeID) DESC, Anime_GroupName ASC";
             }
         }
 
+        #endregion
+
+        #region Contracts
 
         private CL_AniDB_Anime GenerateContract(ISessionWrapper session, List<AniDB_Anime_Title> titles)
         {
@@ -1771,91 +1910,7 @@ ORDER BY count(DISTINCT AnimeID) DESC, Anime_GroupName ASC";
             return contract;
         }
 
-        public SVR_AnimeSeries CreateAnimeSeriesAndGroup(int? existingGroupID = null)
-        {
-            using (var session = DatabaseFactory.SessionFactory.OpenSession())
-            {
-                return CreateAnimeSeriesAndGroup(session.Wrap(), existingGroupID);
-            }
-        }
-
-        public SVR_AnimeSeries CreateAnimeSeriesAndGroup(ISessionWrapper session, int? existingGroupID = null)
-        {
-            // Create a new AnimeSeries record
-            SVR_AnimeSeries series = new SVR_AnimeSeries();
-
-            series.Populate(this);
-            // Populate before making a group to ensure IDs and stats are set for group filters.
-            RepoFactory.AnimeSeries.Save(series, false, false);
-
-            if (existingGroupID == null)
-            {
-                SVR_AnimeGroup grp = new AnimeGroupCreator().GetOrCreateSingleGroupForSeries(session, series);
-                series.AnimeGroupID = grp.AnimeGroupID;
-            }
-            else
-            {
-                SVR_AnimeGroup grp = RepoFactory.AnimeGroup.GetByID(existingGroupID.Value) ??
-                                     new AnimeGroupCreator().GetOrCreateSingleGroupForSeries(session, series);
-                series.AnimeGroupID = grp.AnimeGroupID;
-            }
-
-            RepoFactory.AnimeSeries.Save(series, false, false);
-
-            // check for TvDB associations
-            if (Restricted == 0)
-            {
-                CommandRequest_TvDBSearchAnime cmd = new CommandRequest_TvDBSearchAnime(AnimeID, forced: false);
-                cmd.Save();
-
-                // check for Trakt associations
-                if (ServerSettings.Trakt_IsEnabled && !string.IsNullOrEmpty(ServerSettings.Trakt_AuthToken))
-                {
-                    CommandRequest_TraktSearchAnime cmd2 = new CommandRequest_TraktSearchAnime(AnimeID, forced: false);
-                    cmd2.Save();
-                }
-
-                if (AnimeType == (int) Shoko.Models.Enums.AnimeType.Movie)
-                {
-                    CommandRequest_MovieDBSearchAnime cmd3 =
-                        new CommandRequest_MovieDBSearchAnime(AnimeID, false);
-                    cmd3.Save();
-                }
-            }
-
-            return series;
-        }
-
-        public static void GetRelatedAnimeRecursive(ISessionWrapper session, int animeID,
-            ref List<SVR_AniDB_Anime> relList,
-            ref List<int> relListIDs, ref List<int> searchedIDs)
-        {
-            SVR_AniDB_Anime anime = RepoFactory.AniDB_Anime.GetByAnimeID(animeID);
-            searchedIDs.Add(animeID);
-
-            foreach (AniDB_Anime_Relation rel in anime.GetRelatedAnime(session))
-            {
-                string relationtype = rel.RelationType.ToLower();
-                if (SVR_AnimeGroup.IsRelationTypeInExclusions(relationtype))
-                {
-                    //Filter these relations these will fix messes, like Gundam , Clamp, etc.
-                    continue;
-                }
-                SVR_AniDB_Anime relAnime = RepoFactory.AniDB_Anime.GetByAnimeID(session, rel.RelatedAnimeID);
-                if (relAnime != null && !relListIDs.Contains(relAnime.AnimeID))
-                {
-                    if (SVR_AnimeGroup.IsRelationTypeInExclusions(relAnime.GetAnimeTypeDescription().ToLower()))
-                        continue;
-                    relList.Add(relAnime);
-                    relListIDs.Add(relAnime.AnimeID);
-                    if (!searchedIDs.Contains(rel.RelatedAnimeID))
-                    {
-                        GetRelatedAnimeRecursive(session, rel.RelatedAnimeID, ref relList, ref relListIDs,
-                            ref searchedIDs);
-                    }
-                }
-            }
-        }
+        #endregion
 
         public static void UpdateStatsByAnimeID(int id)
         {

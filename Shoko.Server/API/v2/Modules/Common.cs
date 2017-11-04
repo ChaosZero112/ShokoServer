@@ -170,10 +170,23 @@ namespace Shoko.Server.API.v2.Modules
 
             #endregion
 
+            #region 12. Cast and Staff
+
+            Get["/cast/byseries", true] = async (x, ct) => await Task.Factory.StartNew(GetCastFromSeries, ct);
+            Get["/cast/search", true] = async (x, ct) => await Task.Factory.StartNew(SearchByStaff, ct);
+
+
+            #endregion
+
             Get["/links/serie", true] = async (x, ct) => await Task.Factory.StartNew(GetLinks, ct);
+            Get["/commands/fix"] = x =>
+            {
+                new CommandRequest_Null().Save();
+                return APIStatus.OK();
+            };
         }
 
-        #region 1.Import Folders
+        #region 01. Import Folders
 
         /// <summary>
         /// Handle /api/folder/list
@@ -314,7 +327,7 @@ namespace Shoko.Server.API.v2.Modules
 
         #endregion
 
-        #region 2.UPNP
+        #region 02. UPNP
 
         private object ListUPNP()
         {
@@ -336,7 +349,7 @@ namespace Shoko.Server.API.v2.Modules
 
         #endregion
 
-        #region 3.Actions
+        #region 03. Actions
 
         /// <summary>
         /// Handle /api/remove_missing_files
@@ -529,7 +542,7 @@ namespace Shoko.Server.API.v2.Modules
 
         #endregion
 
-        #region 4. Misc
+        #region 04. Misc
 
         /// <summary>
         /// Returns current user ID for use in legacy calls
@@ -678,7 +691,7 @@ namespace Shoko.Server.API.v2.Modules
 
         #endregion
 
-        #region 5.Queue
+        #region 05. Queue
 
         /// <summary>
         /// Return current information about Queues (hash, general, images)
@@ -911,7 +924,7 @@ namespace Shoko.Server.API.v2.Modules
 
         #endregion
 
-        #region 6.Files
+        #region 06. Files
 
         /// <summary>
         /// Handle /api/file
@@ -1210,7 +1223,7 @@ namespace Shoko.Server.API.v2.Modules
 
         #endregion
 
-        #region 7.Episodes
+        #region 07. Episodes
 
         /// <summary>
         /// Handle /api/ep
@@ -1514,7 +1527,7 @@ namespace Shoko.Server.API.v2.Modules
 
         #endregion
 
-        #region 8.Series
+        #region 08. Series
 
         /// <summary>
         /// Handle /api/serie
@@ -1783,7 +1796,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="all"></param>
         /// <param name="limit"></param>
         /// <returns>List<Serie></returns>
-        internal object GetSeriesByFolder(int id, int uid, bool nocast, bool notag, int level, bool all, int limit, bool allpic, int pic, byte tagfilter)
+        internal object GetSeriesByFolder(int id, int uid, bool nocast, bool notag, int level, bool all, int limit, bool allpic, int pic, TagFilter.Filter tagfilter)
         {
             List<object> allseries = new List<object>();
             List<SVR_VideoLocal> vlpall = RepoFactory.VideoLocalPlace.GetByImportFolder(id)
@@ -1815,7 +1828,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="uid">user id</param>
         /// <param name="limit"></param>
         /// <returns>List<ObjectList></returns>
-        internal object GetSeriesInfoByFolder(int id, int uid, int limit, byte tagfilter)
+        internal object GetSeriesInfoByFolder(int id, int uid, int limit, TagFilter.Filter tagfilter)
         {
             Dictionary<string, long> tmp_list = new Dictionary<string, long>();
             List<object> allseries = new List<object>();
@@ -1874,7 +1887,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="level">deep level</param>
         /// <param name="all"></param>
         /// <returns></returns>
-        internal object GetSerieFromEpisode(int id, int uid, bool nocast, bool notag, int level, bool all, bool allpic, int pic, byte tagfilter)
+        internal object GetSerieFromEpisode(int id, int uid, bool nocast, bool notag, int level, bool all, bool allpic, int pic, TagFilter.Filter tagfilter)
         {
             SVR_AnimeEpisode aep = RepoFactory.AnimeEpisode.GetByID(id);
             if (aep != null)
@@ -1891,7 +1904,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="limit">number of return items</param>
         /// <param name="offset">offset to start from</param>
         /// <returns>List<Serie></returns>
-        internal object GetAllSeries(bool nocast, int limit, int offset, bool notag, int level, bool all, bool allpic, int pic, byte tagfilter)
+        internal object GetAllSeries(bool nocast, int limit, int offset, bool notag, int level, bool all, bool allpic, int pic, TagFilter.Filter tagfilter)
         {
             Request request = Request;
             JMMUser user = (JMMUser) Context.CurrentUser;
@@ -1926,7 +1939,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="series_id">serie id</param>
         /// <param name="nocast">disable cast</param>
         /// <returns></returns>
-        internal object GetSerieById(int series_id, bool nocast, bool notag, int level, bool all, bool allpic, int pic, byte tagfilter)
+        internal object GetSerieById(int series_id, bool nocast, bool notag, int level, bool all, bool allpic, int pic, TagFilter.Filter tagfilter)
         {
             Request request = Request;
             JMMUser user = (JMMUser) Context.CurrentUser;
@@ -2116,7 +2129,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="fuzzy">Disable searching for invalid path characters</param>
         /// <returns>List<Serie></returns>
         internal object Search(string query, int limit, int limit_tag, int offset, int tagSearch, int uid, bool nocast,
-            bool notag, int level, bool all, bool fuzzy, bool allpic, int pic, byte tagfilter)
+            bool notag, int level, bool all, bool fuzzy, bool allpic, int pic, TagFilter.Filter tagfilter)
         {
             query = query.ToLowerInvariant();
 
@@ -2356,7 +2369,7 @@ namespace Shoko.Server.API.v2.Modules
         }
 
         internal object StartsWith(string query, int limit, int uid, bool nocast,
-            bool notag, int level, bool all, bool allpic, int pic, byte tagfilter)
+            bool notag, int level, bool all, bool allpic, int pic, TagFilter.Filter tagfilter)
         {
             query = query.ToLowerInvariant();
 
@@ -2449,7 +2462,7 @@ namespace Shoko.Server.API.v2.Modules
 
         #endregion
 
-        #region 9.Cloud Accounts
+        #region 09. Cloud Accounts
 
         private object GetCloudAccounts()
         {
@@ -2514,7 +2527,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="notag">disable tag</param>
         /// <param name="level">deep level</param>
         /// <returns>List<Filter></returns>
-        internal object GetAllFilters(int uid, bool nocast, bool notag, int level, bool all, bool allpic, int pic, byte tagfilter)
+        internal object GetAllFilters(int uid, bool nocast, bool notag, int level, bool all, bool allpic, int pic, TagFilter.Filter tagfilter)
         {
             Filters filters = new Filters
             {
@@ -2574,7 +2587,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="level">deep level</param>
         /// <param name="all">include missing episodes</param>
         /// <returns>Filter or Filters</returns>
-        internal object GetFilter(int id, int uid, bool nocast, bool notag, int level, bool all, bool allpic, int pic, byte tagfilter)
+        internal object GetFilter(int id, int uid, bool nocast, bool notag, int level, bool all, bool allpic, int pic, TagFilter.Filter tagfilter)
         {
             SVR_GroupFilter gf = RepoFactory.GroupFilter.GetByID(id);
 
@@ -2656,7 +2669,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="level"></param>
         /// <param name="all"></param>
         /// <returns>List<Group></returns>
-        internal object GetAllGroups(int uid, bool nocast, bool notag, int level, bool all, bool allpics, int pic, byte tagfilter)
+        internal object GetAllGroups(int uid, bool nocast, bool notag, int level, bool all, bool allpics, int pic, TagFilter.Filter tagfilter)
         {
             List<Group> grps = new List<Group>();
             List<SVR_AnimeGroup_User> allGrps = RepoFactory.AnimeGroup_User.GetByUserID(uid);
@@ -2680,7 +2693,7 @@ namespace Shoko.Server.API.v2.Modules
         /// <param name="all">add all known episodes</param>
         /// <param name="filterid"></param>
         /// <returns>Group or APIStatus</returns>
-        internal object GetGroup(int id, int uid, bool nocast, bool notag, int level, bool all, int filterid, bool allpics, int pic, byte tagfilter)
+        internal object GetGroup(int id, int uid, bool nocast, bool notag, int level, bool all, int filterid, bool allpics, int pic, TagFilter.Filter tagfilter)
         {
             SVR_AnimeGroup ag = RepoFactory.AnimeGroup.GetByID(id);
             if (ag != null)
@@ -2732,6 +2745,112 @@ namespace Shoko.Server.API.v2.Modules
         }
 
         #endregion
+
+        #endregion
+
+        #region 12. Cast and Staff
+
+        public object GetCastFromSeries()
+        {
+            var ctx = Context;
+            API_Call_Parameters param = this.Bind();
+            SVR_AnimeSeries series = RepoFactory.AnimeSeries.GetByID(param.id);
+            if (series == null) return APIStatus.BadRequest($"No Series with ID {param.id}");
+            List<Role> roles = new List<Role>();
+            var xref_animestaff = RepoFactory.CrossRef_Anime_Staff.GetByAnimeIDAndRoleType(series.AniDB_ID,
+                StaffRoleType.Seiyuu);
+            foreach (var xref in xref_animestaff)
+            {
+                if (xref.RoleID == null) continue;
+                var character = RepoFactory.AnimeCharacter.GetByID(xref.RoleID.Value);
+                if (character == null) continue;
+                var staff = RepoFactory.AnimeStaff.GetByID(xref.StaffID);
+                if (staff == null) continue;
+
+                string cdescription = character.Description;
+                if (string.IsNullOrEmpty(cdescription)) cdescription = null;
+
+                string sdescription = staff.Description;
+                if (string.IsNullOrEmpty(sdescription)) sdescription = null;
+
+                var role = new Role
+                {
+                    character = character.Name,
+                    character_image = APIHelper.ConstructImageLinkFromTypeAndId(ctx, (int) ImageEntityType.Character,
+                        xref.RoleID.Value),
+                    character_description = cdescription,
+                    staff = staff.Name,
+                    staff_image = APIHelper.ConstructImageLinkFromTypeAndId(ctx, (int) ImageEntityType.Staff,
+                        xref.StaffID),
+                    staff_description = sdescription,
+                    role = xref.Role,
+                    type = ((StaffRoleType) xref.RoleType).ToString()
+                };
+                roles.Add(role);
+            }
+            roles.Sort(CompareRoleByImportance);
+            return roles;
+        }
+
+        private static int CompareRoleByImportance(Role role1, Role role2)
+        {
+            bool succeeded1 = Enum.TryParse(role1.role?.Replace(" ", "_"), out CharacterAppearanceType type1);
+            bool succeeded2 = Enum.TryParse(role2.role?.Replace(" ", "_"), out CharacterAppearanceType type2);
+            if (!succeeded1 && !succeeded2) return 0;
+            if (!succeeded1) return 1;
+            if (!succeeded2) return -1;
+            int result = ((int) type1).CompareTo((int) type2);
+            if (result != 0) return result;
+            return string.Compare(role1.character, role2.character, StringComparison.Ordinal);
+        }
+
+        private static int CompareXRef_Anime_StaffByImportance(
+            KeyValuePair<SVR_AnimeSeries, CrossRef_Anime_Staff> staff1,
+            KeyValuePair<SVR_AnimeSeries, CrossRef_Anime_Staff> staff2)
+        {
+            bool succeeded1 = Enum.TryParse(staff1.Value.Role?.Replace(" ", "_"), out CharacterAppearanceType type1);
+            bool succeeded2 = Enum.TryParse(staff2.Value.Role?.Replace(" ", "_"), out CharacterAppearanceType type2);
+            if (!succeeded1 && !succeeded2) return 0;
+            if (!succeeded1) return 1;
+            if (!succeeded2) return -1;
+            int result = ((int) type1).CompareTo((int) type2);
+            if (result != 0) return result;
+            return string.Compare(staff1.Key.GetSeriesName(), staff2.Key.GetSeriesName(),
+                StringComparison.InvariantCultureIgnoreCase);
+        }
+
+        public object SearchByStaff()
+        {
+            var ctx = Context;
+            API_Call_Parameters para = this.Bind();
+
+            List<Serie> results = new List<Serie>();
+            var user = ctx.CurrentUser as JMMUser;
+
+            Filter search_filter = new Filter
+            {
+                name = "Search By Staff",
+                groups = new List<Group>()
+            };
+            Group search_group = new Group
+            {
+                name = para.query,
+                series = new List<Serie>()
+            };
+
+            var seriesDict = SVR_AnimeSeries.SearchSeriesByStaff(para.query, para.fuzzy == 1).ToList();
+
+            seriesDict.Sort(CompareXRef_Anime_StaffByImportance);
+            results.AddRange(seriesDict.Select(a => Serie.GenerateFromAnimeSeries(ctx, a.Key, user.JMMUserID,
+                para.nocast == 1, para.notag == 1, para.level, para.all == 1, para.allpics == 1, para.pic,
+                para.tagfilter)));
+
+            search_group.series = results;
+            search_group.size = search_group.series.Count();
+            search_filter.groups.Add(search_group);
+            search_filter.size = search_filter.groups.Count();
+            return search_filter;
+        }
 
         #endregion
 
